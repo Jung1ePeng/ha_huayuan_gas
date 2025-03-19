@@ -1,0 +1,9 @@
+{
+    "domain": "huayuan_gas",
+    "name": "Huayuan Gas",
+    "version": "1.0.0",
+    "documentation": "https://github.com/Jung1ePeng/ha_huayuan_gas",
+    "requirements": ["beautifulsoup4", "aiohttp"],
+    "dependencies": [],
+    "codeowners": ["@Jung1ePeng"]
+}
