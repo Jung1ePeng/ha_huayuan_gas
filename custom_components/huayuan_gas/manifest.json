@@ -7,5 +7,6 @@
     "dependencies": [],
     "codeowners": ["@Jung1ePeng"],
     "config_flow": true,
-    "integration_type": "device"
+    "integration_type": "device",
+    "supported_platforms": ["sensor"]
 }
