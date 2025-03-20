@@ -8,5 +8,5 @@
     "codeowners": ["@Jung1ePeng"],
     "config_flow": true,
     "integration_type": "device",
-    "supported_platforms": ["sensor"]
+    "iot_class": "cloud_polling"
 }

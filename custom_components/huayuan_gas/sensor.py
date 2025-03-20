@@ -6,14 +6,14 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
     coordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities([
-        HuayuanGasBalanceSensor(coordinator, entry, "表端余额"),
-        HuayuanGasBalanceSensor(coordinator, entry, "账户余额"),
-        HuayuanGasBalanceSensor(coordinator, entry, "欠费金额"),
-        HuayuanGasBalanceSensor(coordinator, entry, "累计用气量"),
-        HuayuanGasBalanceSensor(coordinator, entry, "阀门状态"),
+        HuayuanGasSensor(coordinator, entry, "表端余额"),
+        HuayuanGasSensor(coordinator, entry, "账户余额"),
+        HuayuanGasSensor(coordinator, entry, "欠费金额"),
+        HuayuanGasSensor(coordinator, entry, "累计用气量"),
+        HuayuanGasSensor(coordinator, entry, "阀门状态"),
     ])
 
-class HuayuanGasBalanceSensor(CoordinatorEntity, SensorEntity):
+class HuayuanGasSensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator, entry, attribute):
         super().__init__(coordinator)
         self._attr_name = f"Huayuan Gas {attribute}"
