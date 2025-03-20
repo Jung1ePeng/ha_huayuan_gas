@@ -13,6 +13,7 @@ UPDATE_INTERVAL = timedelta(hours=1)
 LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
+    LOGGER.info(f"Setting up {DOMAIN} entry")
     coordinator = HuayuanGasCoordinator(hass, entry)
     await coordinator.async_config_entry_first_refresh()
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
