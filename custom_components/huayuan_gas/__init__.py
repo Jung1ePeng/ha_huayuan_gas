@@ -3,6 +3,7 @@ import logging
 import aiohttp
 from datetime import timedelta
 from bs4 import BeautifulSoup
+import base64
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -11,6 +12,9 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 DOMAIN = "huayuan_gas"
 UPDATE_INTERVAL = timedelta(hours=1)
 LOGGER = logging.getLogger(__name__)
+
+HTTP_REFERER = base64.b64decode('aHR0cDovL3FjLmh1YXl1YW5yYW5xaS5jb20vaW5kZXgucGhwP2c9V2FwJm09SW5kZXgmYT1iYWxhbmNlX2RldGFpbCZzbj0=').decode()
+USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_1) AppleWebKit/537 (KHTML, like Gecko) Chrome/116.0 Safari/537'
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     LOGGER.info(f"Setting up {DOMAIN} entry")
@@ -31,7 +35,7 @@ class HuayuanGasCoordinator(DataUpdateCoordinator):
         self.sn = entry.data["sn"]
 
     async def _async_update_data(self):
-        url = f"http://qc.huayuanranqi.com/index.php?g=Wap&m=Index&a=balance_detail&sn={self.sn}"
+        url = HTTP_REFERER+f"{self.sn}"
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(url) as response:
