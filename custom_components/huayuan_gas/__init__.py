@@ -55,7 +55,7 @@ class HuayuanGasCoordinator(DataUpdateCoordinator):
         for item in balance_items:
             key = item.find('span').text.strip()
             value = item.find('b').text.strip()
-            match = re.search(r'[\d.]+', value_str)
+            match = re.search(r'[\d.]+', value)
             if match:
                 data[key] = float(match.group())
         return data

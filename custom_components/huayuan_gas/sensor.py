@@ -17,7 +17,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 class HuayuanGasSensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator, entry, attribute):
         super().__init__(coordinator)
-        self._attr_name = f"Huayuan Gas {attribute}"
+        self._attr_name = f"花源燃气 {attribute}"
         self._attr_unique_id = f"huayuan_gas_{attribute}_{entry.entry_id}"
         self.attribute = attribute
 
