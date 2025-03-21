@@ -3,6 +3,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.components.sensor.const import SensorDeviceClass,SensorStateClass
+from homeassistant.const import UnitOfVolume
 
 DOMAIN = "huayuan_gas"
 
@@ -21,7 +22,7 @@ class GasUsageSensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator)
         self._attr_name = f"花源燃气 {attribute}"
         self._attr_unique_id = f"huayuan_gas_{attribute}_{entry.entry_id}"
-        self._attr_native_unit_of_measurement = "m³"
+        self._attr_native_unit_of_measurement = UnitOfVolume.CUBIC_METERS
         self._attr_device_class = SensorDeviceClass.GAS
         self._attr_state_class = SensorStateClass.TOTAL
         self.attribute = attribute
