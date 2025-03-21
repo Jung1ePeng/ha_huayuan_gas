@@ -1,3 +1,4 @@
+import re
 import asyncio
 import logging
 import aiohttp
@@ -10,7 +11,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 DOMAIN = "huayuan_gas"
-UPDATE_INTERVAL = timedelta(seconds=60)
 LOGGER = logging.getLogger(__name__)
 
 HTTP_REFERER = base64.b64decode('aHR0cDovL3FjLmh1YXl1YW5yYW5xaS5jb20vaW5kZXgucGhwP2c9V2FwJm09SW5kZXgmYT1iYWxhbmNlX2RldGFpbCZzbj0=').decode()
@@ -31,7 +31,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
 
 class HuayuanGasCoordinator(DataUpdateCoordinator):
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry):
-        super().__init__(hass, LOGGER, name=DOMAIN, update_interval=UPDATE_INTERVAL,always_update=True)
+        super().__init__(hass,
+            LOGGER,
+            name=DOMAIN,
+            update_interval=timedelta(days=1))
         self.sn = entry.data["sn"]
 
     async def _async_update_data(self):
@@ -52,5 +55,7 @@ class HuayuanGasCoordinator(DataUpdateCoordinator):
         for item in balance_items:
             key = item.find('span').text.strip()
             value = item.find('b').text.strip()
-            data[key] = value
+            match = re.search(r'[\d.]+', value_str)
+            if match:
+                data[key] = float(match.group())
         return data
