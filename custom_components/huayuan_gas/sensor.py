@@ -6,7 +6,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 DOMAIN = "huayuan_gas"
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
-    # coordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities([
         HuayuanGasSensor(coordinator, entry, "表端余额"),
         HuayuanGasSensor(coordinator, entry, "账户余额"),
