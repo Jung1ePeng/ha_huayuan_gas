@@ -2,7 +2,7 @@ from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-import SensorDeviceClass
+from homeassistant.components.sensor.const import SensorDeviceClass
 
 DOMAIN = "huayuan_gas"
 
