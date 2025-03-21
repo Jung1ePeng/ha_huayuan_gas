@@ -34,7 +34,7 @@ class HuayuanGasCoordinator(DataUpdateCoordinator):
         super().__init__(hass,
             LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(days=1))
+            update_interval=timedelta(seconds=30))
         self.sn = entry.data["sn"]
 
     async def _async_update_data(self):
