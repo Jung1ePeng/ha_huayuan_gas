@@ -1,61 +1,45 @@
-import re
-import asyncio
 import logging
-import aiohttp
-from datetime import timedelta
-from bs4 import BeautifulSoup
-import base64
+from dataclasses import dataclass
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.const import Platform
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-DOMAIN = "huayuan_gas"
-LOGGER = logging.getLogger(__name__)
+from .const import DOMAIN, BALANCE_URL, RECHARGE_LOG_URL, USER_AGENT
+from .coordinator import HuayuanGasCoordinator, GasRechargeCoordinator
 
-HTTP_REFERER = base64.b64decode('aHR0cDovL3FjLmh1YXl1YW5yYW5xaS5jb20vaW5kZXgucGhwP2c9V2FwJm09SW5kZXgmYT1iYWxhbmNlX2RldGFpbCZzbj0=').decode()
-USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_1) AppleWebKit/537 (KHTML, like Gecko) Chrome/116.0 Safari/537'
+_LOGGER = logging.getLogger(__name__)
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
-    LOGGER.info(f"Setting up {DOMAIN} entry")
-    coordinator = HuayuanGasCoordinator(hass, entry)
-    await coordinator.async_config_entry_first_refresh()
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
-    await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
+PLATFORMS: list[Platform] = [Platform.SENSOR]
+
+async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
+    # 创建两个数据协调器
+    gas_balance_coordinator = HuayuanGasCoordinator(hass, config_entry)
+    gas_recharge_coordinator = GasRechargeCoordinator(hass, config_entry)
+
+    # 进行首次刷新，确保数据可用
+    await gas_balance_coordinator.async_config_entry_first_refresh()
+    await gas_recharge_coordinator.async_config_entry_first_refresh()
+
+    # 将协调器存储在配置条目中
+    hass.data.setdefault(DOMAIN, {})[config_entry.entry_id] = {
+        "gas_balance_coordinator": gas_balance_coordinator,
+        "gas_recharge_coordinator": gas_recharge_coordinator,
+    }
+
+    config_entry.async_on_unload(
+        config_entry.add_update_listener(_async_update_listener)
+    )
+
+    await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
     return True
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
-    await hass.config_entries.async_unload_platforms(entry, ["sensor"])
-    hass.data[DOMAIN].pop(entry.entry_id)
-    return True
+async def _async_update_listener(hass: HomeAssistant, config_entry):
+    """Handle config options update."""
+    # Reload the integration when the options change.
+    await hass.config_entries.async_reload(config_entry.entry_id)
 
-class HuayuanGasCoordinator(DataUpdateCoordinator):
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry):
-        super().__init__(hass,
-            LOGGER,
-            name=DOMAIN,
-            update_interval=timedelta(seconds=30))
-        self.sn = entry.data["sn"]
 
-    async def _async_update_data(self):
-        url = HTTP_REFERER+f"{self.sn}"
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url) as response:
-                    html = await response.text()
-                    return self.parse_html(html)
-        except Exception as e:
-            LOGGER.error(f"Error fetching data: {e}")
-            return None
-
-    def parse_html(self, html):
-        soup = BeautifulSoup(html, 'html.parser')
-        data = {}
-        balance_items = soup.find_all('li')
-        for item in balance_items:
-            key = item.find('span').text.strip()
-            value = item.find('b').text.strip()
-            match = re.search(r'[\d.]+', value)
-            if match:
-                data[key] = float(match.group())
-        return data
+async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
+    return await hass.config_entries.async_unload_platforms(config_entry, PLATFORMS)
