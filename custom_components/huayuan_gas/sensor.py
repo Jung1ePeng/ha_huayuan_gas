@@ -120,12 +120,6 @@ class GasCostSensor(SensorEntity):
             self._attr_native_value = 0.0
         else:
             # 如果有充值，则费用 = 前一日余额 + 充值金额 - 当前余额，否则费用 = 前一日余额 - 当前余额
-            if yesterday_recharge > 0:
-                self._attr_native_value = (
-                    self.previous_balance + yesterday_recharge - current_balance
-                )
-            else:
-                self._attr_native_value = self.previous_balance - current_balance
-
+            self._attr_native_value = self.previous_balance + yesterday_recharge - current_balance
         # 更新 previous_balance 为当前余额，用于下一次计算
         self.previous_balance = current_balance
