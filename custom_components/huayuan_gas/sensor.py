@@ -60,7 +60,7 @@ class GasBalanceSensor(CoordinatorEntity, SensorEntity):
         self._attr_unique_id = f"huayuan_gas_{attribute}_{entry.entry_id}"
         self._attr_native_unit_of_measurement = "元"
         self._attr_device_class = SensorDeviceClass.MONETARY
-        self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+        self._attr_state_class = SensorStateClass.TOTAL
         self.attribute = attribute
 
     @property
@@ -78,7 +78,7 @@ class GasRechargeSensor(CoordinatorEntity, SensorEntity):
         self._attr_unique_id = f"huayuan_gas_{attribute}_{entry.entry_id}"
         self._attr_native_unit_of_measurement = "元"
         self._attr_device_class = SensorDeviceClass.MONETARY
-        self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+        self._attr_state_class = SensorStateClass.TOTAL
         self.attribute = attribute
 
     @property
@@ -103,7 +103,7 @@ class GasCostSensor(SensorEntity):
         self.recharge_coordinator = recharge_coordinator
         self._attr_name = "燃气费用"
         self._attr_unique_id = f"huayuan_gas_cost_{balance_coordinator.sn}"
-        self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+        self._attr_state_class = SensorStateClass.TOTAL
         self._attr_icon = "mdi:currency-cny"
         self._attr_native_unit_of_measurement = "元"
         self._attr_device_class = SensorDeviceClass.MONETARY
