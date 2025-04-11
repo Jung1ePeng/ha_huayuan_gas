@@ -1,11 +1,13 @@
 import logging
+import datetime
+
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.components.sensor.const import SensorDeviceClass, SensorStateClass
 from homeassistant.const import UnitOfVolume
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+
 
 from .const import DOMAIN
 from .coordinator import HuayuanGasCoordinator, GasRechargeCoordinator
@@ -116,6 +118,8 @@ class GasCostSensor(SensorEntity):
         recharge_data = self.recharge_coordinator.data
         current_balance = balance_data.get("表端余额", 0.0) if balance_data else 0.0
         yesterday_recharge = recharge_data.get("充值记录", 0.0) if recharge_data else 0.0
+        _LOGGER.info("当前时间：%s, 当前余额: %s, 昨日充值: %s, 昨日余额: %s", 
+                     datetime.datetime.now(), current_balance, yesterday_recharge, self.previous_balance)
 
         if self.previous_balance is None:
             # 第一次初始化时不计算费用
