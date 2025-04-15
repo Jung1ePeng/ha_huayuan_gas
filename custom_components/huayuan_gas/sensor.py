@@ -121,7 +121,7 @@ class GasCostSensor(SensorEntity, RestoreEntity):
             except (ValueError, TypeError):
                 self.previous_balance = None
             self.last_recorded_date = last_state.attributes.get("last_recorded_date")
-            LOGGER.debug("恢复状态: previous_balance=%s, last_recorded_date=%s",
+            _LOGGER.debug("恢复状态: previous_balance=%s, last_recorded_date=%s",
                          self.previous_balance, self.last_recorded_date)
         else:
             self.previous_balance = None
@@ -142,14 +142,14 @@ class GasCostSensor(SensorEntity, RestoreEntity):
         yesterday_recharge = recharge_data.get("充值记录", 0.0) if recharge_data else 0.0
         
         today_str = datetime.date.today().isoformat()
-        LOGGER.info("当前时间：%s, 当前余额: %s, 昨日充值: %s, 上次记录余额: %s", 
+        _LOGGER.info("当前时间：%s, 当前余额: %s, 昨日充值: %s, 上次记录余额: %s", 
                      datetime.datetime.now(), current_balance, yesterday_recharge, self.previous_balance)
         
         if self.last_recorded_date != today_str:
             # 如果今天是新的一天，则在今天第一次更新时记录昨天的余额为 previous_balance
             self.previous_balance = current_balance
             self.last_recorded_date = today_str
-            LOGGER.info("新的一天，记录昨日余额：%s (日期：%s)", self.previous_balance, today_str)
+            _LOGGER.info("新的一天，记录昨日余额：%s (日期：%s)", self.previous_balance, today_str)
             # 初始化当天费用不计算
             self._attr_native_value = 0.0
         else:
@@ -163,7 +163,7 @@ class GasCostSensor(SensorEntity, RestoreEntity):
                     self._attr_native_value = self.previous_balance - current_balance
 
         # 此处可以输出调试信息
-        LOGGER.debug("更新后: previous_balance=%s, current_balance=%s, 昨日充值=%s, 计算燃气费用=%s",
+        _LOGGER.debug("更新后: previous_balance=%s, current_balance=%s, 昨日充值=%s, 计算燃气费用=%s",
                      self.previous_balance, current_balance, yesterday_recharge, self._attr_native_value)
 
     @property
