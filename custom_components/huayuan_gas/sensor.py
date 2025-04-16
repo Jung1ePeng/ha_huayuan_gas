@@ -198,7 +198,7 @@ class CumulativeGasCostSensor(SensorEntity, RestoreEntity):
             except (ValueError, TypeError):
                 self._attr_native_value = 0.0
             self.last_update_date = last_state.attributes.get("last_update_date")
-            _LOGGER.debug("恢复累计燃气费用: %s, 上次更新时间: %s", self._attr_native_value, self.last_update_date)
+            _LOGGER.info("恢复累计燃气费用: %s, 上次更新时间: %s", self._attr_native_value, self.last_update_date)
         else:
             self._attr_native_value = 0.0
             self.last_update_date = None
@@ -214,13 +214,13 @@ class CumulativeGasCostSensor(SensorEntity, RestoreEntity):
         # 获取 daily gas cost 传感器状态
         daily_sensor = self.hass.states.get(self.daily_cost_entity_id)
         if daily_sensor is None:
-            _LOGGER.warning("未找到每日燃气费用传感器：%s", self.daily_cost_entity_id)
+            _LOGGER.info("未找到每日燃气费用传感器：%s", self.daily_cost_entity_id)
             return
 
         try:
             daily_cost = float(daily_sensor.state)
         except (ValueError, TypeError):
-            _LOGGER.warning("每日燃气费用传感器状态无效：%s", daily_sensor.state)
+            _LOGGER.info("每日燃气费用传感器状态无效：%s", daily_sensor.state)
             daily_cost = 0.0
 
         # 累加前一天的费用。注意：如果 daily_sensor 更新的是当天费用，
