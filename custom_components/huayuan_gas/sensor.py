@@ -173,3 +173,63 @@ class GasCostSensor(SensorEntity, RestoreEntity):
             "previous_balance": self.previous_balance,
             "last_recorded_date": self.last_recorded_date,
         }
+
+class CumulativeGasCostSensor(SensorEntity, RestoreEntity):
+    """
+    累计燃气费用传感器
+    每日更新一次：当检测到当前日期与上次更新时间不同，则读取 daily gas cost（sensor.gas_cost）的值，
+    并将其加入累计费用中。重启后通过 RestoreEntity 恢复状态和上次更新时间。
+    """
+    def __init__(self, daily_cost_entity_id="sensor.ran_qi_fei_yong"):
+        self._attr_name = "累计燃气费用"
+        self._attr_state_class = SensorStateClass.TOTAL
+        self._attr_native_unit_of_measurement = "元"
+        self._attr_device_class = SensorDeviceClass.MONETARY
+        self.daily_cost_entity_id = daily_cost_entity_id
+        self.last_update_date = None  # 格式 "YYYY-MM-DD"
+
+    async def async_added_to_hass(self):
+        """实体添加到 HA 后恢复状态"""
+        await super().async_added_to_hass()
+        last_state = await self.async_get_last_state()
+        if last_state is not None:
+            try:
+                self._attr_native_value = float(last_state.state)
+            except (ValueError, TypeError):
+                self._attr_native_value = 0.0
+            self.last_update_date = last_state.attributes.get("last_update_date")
+            _LOGGER.debug("恢复累计燃气费用: %s, 上次更新时间: %s", self._attr_native_value, self.last_update_date)
+        else:
+            self._attr_native_value = 0.0
+            self.last_update_date = None
+
+    async def async_update(self):
+        """每次更新时，如果是新的一天，则累计添加前一天的燃气费用"""
+        today_str = datetime.date.today().isoformat()
+
+        # 如果已经在当天更新过，则不再更新
+        if self.last_update_date == today_str:
+            return
+
+        # 获取 daily gas cost 传感器状态
+        daily_sensor = self.hass.states.get(self.daily_cost_entity_id)
+        if daily_sensor is None:
+            _LOGGER.warning("未找到每日燃气费用传感器：%s", self.daily_cost_entity_id)
+            return
+
+        try:
+            daily_cost = float(daily_sensor.state)
+        except (ValueError, TypeError):
+            _LOGGER.warning("每日燃气费用传感器状态无效：%s", daily_sensor.state)
+            daily_cost = 0.0
+
+        # 累加前一天的费用。注意：如果 daily_sensor 更新的是当天费用，
+        # 则建议在每天凌晨稍后（例如 00:05）触发更新，确保 daily_sensor 的数值代表昨天的数据。
+        self._attr_native_value += daily_cost
+        self.last_update_date = today_str
+        _LOGGER.info("累计燃气费用更新: 新增 %.2f 元, 累计 %.2f 元, 更新时间: %s", daily_cost, self._attr_native_value, today_str)
+
+    @property
+    def extra_state_attributes(self):
+        """返回附加属性，保存上次更新时间"""
+        return {"last_update_date": self.last_update_date}
