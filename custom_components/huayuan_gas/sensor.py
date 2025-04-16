@@ -33,6 +33,7 @@ async def async_setup_entry(
                 coordinators["gas_balance_coordinator"],
                 coordinators["gas_recharge_coordinator"],
             ),
+            CumulativeGasCostSensor(),
         ]
     )
 
