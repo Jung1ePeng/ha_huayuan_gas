@@ -183,6 +183,7 @@ class CumulativeGasCostSensor(SensorEntity, RestoreEntity):
     """
     def __init__(self, daily_cost_entity_id="sensor.ran_qi_fei_yong"):
         self._attr_name = "累计燃气费用"
+        self._attr_unique_id = f"huayuan_gas_cumulative_cost"
         self._attr_state_class = SensorStateClass.TOTAL
         self._attr_native_unit_of_measurement = "元"
         self._attr_device_class = SensorDeviceClass.MONETARY
