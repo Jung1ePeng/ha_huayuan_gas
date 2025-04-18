@@ -146,22 +146,19 @@ class GasCostSensor(SensorEntity, RestoreEntity):
         _LOGGER.info("当前时间：%s, 当前余额: %s, 昨日充值: %s, 上次记录余额: %s", 
                      datetime.datetime.now(), current_balance, yesterday_recharge, self.previous_balance)
         
-        if self.last_recorded_date != today_str:
-            # 如果今天是新的一天，则在今天第一次更新时记录昨天的余额为 previous_balance
-            self.previous_balance = current_balance
-            self.last_recorded_date = today_str
-            _LOGGER.info("新的一天，记录昨日余额：%s (日期：%s)", self.previous_balance, today_str)
-            # 初始化当天费用不计算
+        if self.last_recorded_date == today_str:
+            return
+        
+        # 如果今天是新的一天，则在今天第一次更新时记录昨天的余额为 previous_balance
+        self.previous_balance = current_balance
+        self.last_recorded_date = today_str
+        _LOGGER.info("新的一天，记录昨日余额：%s (日期：%s)", self.previous_balance, today_str)
+
+        if self.previous_balance is None:
             self._attr_native_value = 0.0
         else:
-            if self.previous_balance is None:
-                self._attr_native_value = 0.0
-            else:
-                # 如果检测到充值，则费用 = previous_balance + 昨日充值 - 当前余额；否则费用 = previous_balance - 当前余额
-                if yesterday_recharge > 0:
-                    self._attr_native_value = self.previous_balance + yesterday_recharge - current_balance
-                else:
-                    self._attr_native_value = self.previous_balance - current_balance
+            # 费用 = previous_balance + 昨日充值 - 当前余额
+            self._attr_native_value = self.previous_balance + yesterday_recharge - current_balance
 
         # 此处可以输出调试信息
         _LOGGER.debug("更新后: previous_balance=%s, current_balance=%s, 昨日充值=%s, 计算燃气费用=%s",
@@ -174,6 +171,10 @@ class GasCostSensor(SensorEntity, RestoreEntity):
             "previous_balance": self.previous_balance,
             "last_recorded_date": self.last_recorded_date,
         }
+    
+    @property
+    def should_poll(self):
+        return False
 
 class CumulativeGasCostSensor(SensorEntity, RestoreEntity):
     """
@@ -235,3 +236,7 @@ class CumulativeGasCostSensor(SensorEntity, RestoreEntity):
     def extra_state_attributes(self):
         """返回附加属性，保存上次更新时间"""
         return {"last_update_date": self.last_update_date}
+    
+    @property
+    def should_poll(self):
+        return False
