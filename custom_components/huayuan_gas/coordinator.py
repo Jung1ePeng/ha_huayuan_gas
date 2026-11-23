@@ -8,6 +8,7 @@ import logging
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -139,6 +140,26 @@ class HuayuanGasCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self) -> dict:
         async with self._settlement_lock:
             return await self._async_refresh_meter()
+
+    async def async_refresh_recharge_history(self) -> None:
+        """Replace the recharge archive after a successful full lookup."""
+        async with self._settlement_lock:
+            today = now().date()
+            try:
+                payments = await self.api.payments(HISTORY_START, today)
+            except GasApiError as err:
+                raise HomeAssistantError(str(err)) from err
+
+            previous = self.payments
+            self.payments = tuple(sorted(payments, key=lambda payment: payment.time))
+            try:
+                await self._save(self.settlement, self._legacy_total)
+            except Exception:
+                self.payments = previous
+                raise
+            if self.data is not None:
+                self.data = {**self.data, "payments": self.payments}
+                self.async_update_listeners()
 
     async def _async_refresh_meter(self) -> dict:
         try:

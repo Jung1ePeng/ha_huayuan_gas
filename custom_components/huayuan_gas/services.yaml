@@ -1,0 +1,3 @@
+refresh_recharge_history:
+  name: Refresh recharge history
+  description: Replace the saved recharge history for all configured Huayuan Gas meters with the records available from the provider.
