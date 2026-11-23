@@ -14,6 +14,13 @@
 
 ## 充值历史
 
+要按实际交易时间看散点图，在「设置 → 仪表盘 → 资源」添加 JavaScript 模块 `/huayuan_gas/recharge-points.js`，然后在仪表盘添加手动卡片。每笔交易只画一个点，点击点可看秒级时间和金额。
+
+```yaml
+type: custom:huayuan-recharge-points
+entity: sensor.chong_zhi_ji_lu
+```
+
 在「开发者工具 → 动作」运行 `huayuan_gas.refresh_recharge_history`，即可为已加载的燃气表重新抓取网站可查的全部记录。查询成功后才会替换已保存的明细，这个动作只更新充值历史。
 
 「充值记录」沿用原实体 ID，状态显示交易时间和金额。如果自动化需要最新金额，可读取 `latest.amount` 属性并转成数字。HA 历史时间线按检测时间记录最新一笔，状态文字里的日期是实际交易时间。网站能查到的完整明细在实体的 `records` 属性中，按交易时间从新到旧排列，也包含安装前或同一次刷新发现的多笔交易。

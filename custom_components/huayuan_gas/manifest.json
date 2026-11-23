@@ -1,11 +1,11 @@
 {
     "domain": "huayuan_gas",
     "name": "Huayuan Gas",
-    "version": "1.2.2",
+    "version": "1.2.3",
     "documentation": "https://github.com/Jung1ePeng/ha_huayuan_gas",
     "issue_tracker": "https://github.com/Jung1ePeng/ha_huayuan_gas/issues",
     "requirements": ["beautifulsoup4"],
-    "dependencies": [],
+    "after_dependencies": ["http"],
     "codeowners": ["@Jung1ePeng"],
     "config_flow": true,
     "integration_type": "device",

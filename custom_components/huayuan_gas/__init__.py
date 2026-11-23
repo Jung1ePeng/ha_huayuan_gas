@@ -1,5 +1,7 @@
 """Set up the Huayuan Gas integration."""
 
+from pathlib import Path
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
@@ -15,6 +17,16 @@ PLATFORMS = [Platform.SENSOR]
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    if hass.http is not None:
+        url = "/huayuan_gas/recharge-points.js"
+        path = str(Path(__file__).parent / "recharge-points.js")
+        if hasattr(hass.http, "async_register_static_paths"):
+            from homeassistant.components.http import StaticPathConfig
+
+            await hass.http.async_register_static_paths([StaticPathConfig(url, path, False)])
+        else:
+            hass.http.register_static_path(url, path, cache_headers=False)
+
     async def refresh_recharge_history(call: ServiceCall) -> None:
         coordinators = tuple(hass.data.get(DOMAIN, {}).values())
         if not coordinators:
