@@ -1,7 +1,7 @@
 {
     "domain": "huayuan_gas",
     "name": "Huayuan Gas",
-    "version": "1.2.4",
+    "version": "1.2.5",
     "documentation": "https://github.com/Jung1ePeng/ha_huayuan_gas",
     "issue_tracker": "https://github.com/Jung1ePeng/ha_huayuan_gas/issues",
     "requirements": ["beautifulsoup4"],

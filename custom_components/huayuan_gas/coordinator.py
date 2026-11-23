@@ -161,6 +161,7 @@ class HuayuanGasCoordinator(DataUpdateCoordinator):
             if self.data is not None:
                 self.data = {**self.data, "payments": self.payments}
                 self.async_update_listeners()
+            _LOGGER.debug("Manual recharge history refresh: end_date=%s records=%d", today, len(payments))
 
     async def _async_refresh_meter(self) -> dict:
         try:
@@ -177,6 +178,10 @@ class HuayuanGasCoordinator(DataUpdateCoordinator):
         yesterday = today - timedelta(days=1)
         midnight = sampled_at.replace(hour=0, minute=0, second=0, microsecond=0)
         balance = data["meter_balance"]
+        _LOGGER.debug(
+            "Meter sample: time=%s meter_balance_cny=%s usage_m3=%s",
+            sampled_at.isoformat(), balance, data["usage"],
+        )
         old_balance = self.meter_balance
         old_usage = self.usage
         old_boundaries = self.boundaries
@@ -188,6 +193,10 @@ class HuayuanGasCoordinator(DataUpdateCoordinator):
                 day: value for day, value in self.boundaries.items() if day >= yesterday
             }
             self.boundaries[today] = balance
+            _LOGGER.debug(
+                "Daily boundary saved: date=%s sampled_at=%s meter_balance_cny=%s",
+                today, sampled_at.isoformat(), balance,
+            )
         previous = self.settlement
         begin = (
             min(yesterday, previous.sampled_at.date())
@@ -217,17 +226,33 @@ class HuayuanGasCoordinator(DataUpdateCoordinator):
             + SCAN_INTERVAL - refreshed_at
         )
         # Replace the range returned by the provider and keep earlier records.
+        yesterday_payments = [p for p in payments if p.time.date() == yesterday]
+        _LOGGER.debug(
+            "Payments fetched: begin=%s end=%s records=%d yesterday_records=%s",
+            begin, today, len(payments),
+            [(p.time.isoformat(), str(p.amount)) for p in yesterday_payments],
+        )
         self.payments = tuple(sorted(
             [p for p in self.payments or () if p.time.date() < begin] + payments,
             key=lambda p: p.time,
         ))
         if yesterday in self.boundaries and today in self.boundaries:
-            recharged_yesterday = sum(
-                (p.amount for p in payments if p.time.date() == yesterday), ZERO
-            )
+            recharged_yesterday = sum((p.amount for p in yesterday_payments), ZERO)
             self.daily_cost = (
                 yesterday,
                 self.boundaries[yesterday] + recharged_yesterday - self.boundaries[today],
+            )
+            if self.daily_cost != old_daily:
+                _LOGGER.debug(
+                    "Daily settlement: date=%s opening_cny=%s recharge_cny=%s "
+                    "closing_cny=%s cost_cny=%s",
+                    yesterday, self.boundaries[yesterday], recharged_yesterday,
+                    self.boundaries[today], self.daily_cost[1],
+                )
+        else:
+            _LOGGER.debug(
+                "Daily settlement pending: date=%s opening_available=%s closing_available=%s",
+                yesterday, yesterday in self.boundaries, today in self.boundaries,
             )
 
         settlement = previous
@@ -244,6 +269,12 @@ class HuayuanGasCoordinator(DataUpdateCoordinator):
             cost = previous.balance + recharged - balance
             settlement = Settlement(
                 sampled_at, balance, previous.total + cost, previous.sampled_at, cost
+            )
+            _LOGGER.debug(
+                "Cumulative settlement: start=%s end=%s opening_cny=%s recharge_cny=%s "
+                "closing_cny=%s cost_cny=%s total_cny=%s",
+                previous.sampled_at.isoformat(), sampled_at.isoformat(), previous.balance,
+                recharged, balance, cost, settlement.total,
             )
 
         if (
