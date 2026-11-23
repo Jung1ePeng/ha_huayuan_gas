@@ -65,6 +65,7 @@ class HuayuanGasCoordinator(DataUpdateCoordinator):
         self.settlement: Settlement | None = None
         self._legacy_total: Decimal | None = None
         self.payments: tuple[Payment, ...] | None = None
+        self.meter_balance: Decimal | None = None
         self.usage: Decimal | None = None
         self.boundaries: dict[date, Decimal] = {}
         self.daily_cost: tuple[date, Decimal] | None = None
@@ -74,6 +75,9 @@ class HuayuanGasCoordinator(DataUpdateCoordinator):
         if (stored := await self.store.async_load()) is not None:
             if stored["settlement"] is not None:
                 self.settlement = Settlement.restore(stored["settlement"])
+                self.meter_balance = self.settlement.balance
+            if stored.get("meter_balance") is not None:
+                self.meter_balance = Decimal(stored["meter_balance"])
             if stored["legacy_total"] is not None:
                 self._legacy_total = Decimal(stored["legacy_total"])
             if stored.get("payments") is not None:
@@ -101,6 +105,9 @@ class HuayuanGasCoordinator(DataUpdateCoordinator):
                     if self.payments is not None else None
                 ),
                 "usage": str(self.usage) if self.usage is not None else None,
+                "meter_balance": (
+                    str(self.meter_balance) if self.meter_balance is not None else None
+                ),
                 "boundaries": {
                     day.isoformat(): str(balance) for day, balance in self.boundaries.items()
                 },
@@ -141,18 +148,19 @@ class HuayuanGasCoordinator(DataUpdateCoordinator):
             if self.usage is None and self.settlement is None:
                 raise UpdateFailed(str(err)) from err
             _LOGGER.warning("Meter data unavailable: %s", err)
-            return self._snapshot({}, now().date(), usage_stale=True, total_stale=True)
+            return self._snapshot({}, now().date(), meter_stale=True, total_stale=True)
 
         sampled_at = now()
         today = sampled_at.date()
         yesterday = today - timedelta(days=1)
         midnight = sampled_at.replace(hour=0, minute=0, second=0, microsecond=0)
         balance = data["meter_balance"]
+        old_balance = self.meter_balance
         old_usage = self.usage
         old_boundaries = self.boundaries
         old_payments = self.payments
         old_daily = self.daily_cost
-        self.usage = data["usage"]
+        self.meter_balance, self.usage = balance, data["usage"]
         if today not in self.boundaries and sampled_at - midnight < MIDNIGHT_WINDOW:
             self.boundaries = {
                 day: value for day, value in self.boundaries.items() if day >= yesterday
@@ -169,11 +177,15 @@ class HuayuanGasCoordinator(DataUpdateCoordinator):
         except GasApiError as err:
             self.update_interval = RETRY_INTERVAL
             _LOGGER.warning("Payment data unavailable: %s", err)
-            if self.usage != old_usage or self.boundaries != old_boundaries:
+            if (
+                balance != old_balance or self.usage != old_usage
+                or self.boundaries != old_boundaries
+            ):
                 try:
                     await self._save(previous, self._legacy_total)
                 except Exception:
                     self.boundaries, self.usage = old_boundaries, old_usage
+                    self.meter_balance = old_balance
                     raise
             return self._snapshot(data, today, total_stale=True)
 
@@ -185,7 +197,7 @@ class HuayuanGasCoordinator(DataUpdateCoordinator):
         # Replace the range returned by the provider and keep earlier records.
         self.payments = tuple(sorted(
             [p for p in self.payments or () if p.time.date() < begin] + payments,
-            key=lambda p: (p.time, p.sequence or 0),
+            key=lambda p: p.time,
         ))
         if yesterday in self.boundaries and today in self.boundaries:
             recharged_yesterday = sum(
@@ -216,21 +228,25 @@ class HuayuanGasCoordinator(DataUpdateCoordinator):
             settlement != previous or self.payments != old_payments
             or self.daily_cost != old_daily or self.boundaries != old_boundaries
             or self.usage != old_usage
+            or balance != old_balance
         ):
             try:
                 await self._save(settlement, self._legacy_total)
             except Exception:
                 self.payments, self.daily_cost = old_payments, old_daily
                 self.boundaries, self.usage = old_boundaries, old_usage
+                self.meter_balance = old_balance
                 raise
         return self._snapshot(data, today)
 
     def _snapshot(
-        self, data: dict, today: date, *, usage_stale: bool = False, total_stale: bool = False
+        self, data: dict, today: date, *, meter_stale: bool = False, total_stale: bool = False
     ) -> dict:
         data.update(
             usage=self.usage,
-            usage_stale=usage_stale,
+            meter_balance=self.meter_balance,
+            meter_balance_stale=meter_stale,
+            usage_stale=meter_stale,
             total_stale=total_stale,
             settlement=self.settlement,
             payments=self.payments,

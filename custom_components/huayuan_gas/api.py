@@ -18,11 +18,9 @@ BALANCE_FIELDS = {
     "账户余额": "account_balance",
     "欠费金额": "arrears",
     "累计用气量": "usage",
-    "阀门状态": "valve",
 }
 BALANCE_VALUE = re.compile(rf"(?:共计\s*)?[￥¥]?\s*({NUMBER})\s*(?:元|m³|m3|立方米)?")
 PAYMENT_TIME = re.compile(r"\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?=\s|$)")
-PAYMENT_SEQUENCE = re.compile(r"(\d+)\s*次")
 
 
 class GasApiError(Exception):
@@ -35,24 +33,18 @@ class Payment:
 
     time: datetime
     amount: Decimal
-    channel: str | None = None
-    sequence: int | None = None
 
     @classmethod
     def restore(cls, data: dict) -> "Payment":
         return cls(
             datetime.fromisoformat(data["time"]),
             Decimal(data["amount"]),
-            data["channel"],
-            data["sequence"],
         )
 
     def serialize(self) -> dict:
         return {
             "time": self.time.isoformat(),
             "amount": str(self.amount),
-            "channel": self.channel,
-            "sequence": self.sequence,
         }
 
 
@@ -71,9 +63,7 @@ def parse_balance(html: str) -> dict[str, Decimal | str]:
             continue
         key = BALANCE_FIELDS.get(label.get_text(strip=True))
         raw = value.get_text(strip=True)
-        if key == "valve" and raw:
-            data[key] = raw
-        elif key and (match := BALANCE_VALUE.fullmatch(raw)):
+        if key and (match := BALANCE_VALUE.fullmatch(raw)):
             data[key] = Decimal(match[1].replace(",", "").replace("−", "-"))
 
     if not {"meter_balance", "usage"} <= data.keys():
@@ -102,18 +92,10 @@ def parse_payments(html: str) -> list[Payment]:
             time = datetime.fromisoformat(" ".join(stamp[0].split()))
         except ValueError as err:
             raise GasApiError("Invalid payment timestamp") from err
-        channel = header.get_text(" ", strip=True).removesuffix(raw_amount).strip()
-        sequence_text = date_text.select_one("em")
-        sequence = (
-            PAYMENT_SEQUENCE.fullmatch(sequence_text.get_text(strip=True))
-            if sequence_text else None
-        )
         payments.append(
             Payment(
                 time.replace(tzinfo=BILLING_ZONE),
                 Decimal(raw_amount.replace(",", "").replace("−", "-")),
-                channel or None,
-                int(sequence[1]) if sequence else None,
             )
         )
     return payments

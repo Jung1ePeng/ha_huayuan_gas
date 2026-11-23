@@ -21,7 +21,8 @@ from .coordinator import HuayuanGasCoordinator
 
 LEGACY_TOTAL_ID = "huayuan_gas_cumulative_cost"
 REMOVED_KEYS = (
-    "recharge_time", "recharge_channel", "recharge_sequence", "account_balance", "arrears"
+    "recharge_time", "recharge_channel", "recharge_sequence", "account_balance", "arrears",
+    "valve",
 )
 
 
@@ -43,10 +44,6 @@ SENSORS = (
     SensorEntityDescription(
         key="recharge",
         name="充值记录",
-    ),
-    SensorEntityDescription(
-        key="valve",
-        name="阀门状态",
     ),
     SensorEntityDescription(
         key="cost",
@@ -142,7 +139,7 @@ class GasSensor(CoordinatorEntity, SensorEntity):
         key = self.entity_description.key
         if key == "cost" and (daily := data.get("daily_cost")) is not None:
             return {"billing_date": daily[0].isoformat()}
-        if key in ("usage", "total"):
+        if key in ("meter_balance", "usage", "total"):
             return {"stale": data.get(f"{key}_stale", False)}
         return None
 
@@ -159,8 +156,7 @@ class RechargeSensor(GasSensor):
             return None
         latest = payments[-1]
         time = latest.time.strftime("%Y-%m-%d %H:%M:%S")
-        sequence = latest.sequence if latest.sequence is not None else "—"
-        return f"{time} · ¥{latest.amount:.2f} · {latest.channel or '—'} · #{sequence}"
+        return f"{time} · ¥{latest.amount:.2f}"
 
     @property
     def extra_state_attributes(self) -> dict | None:
