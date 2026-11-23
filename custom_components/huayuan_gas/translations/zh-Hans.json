@@ -1,0 +1,18 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "data": {
+          "sn": "燃气表号"
+        }
+      }
+    },
+    "error": {
+      "invalid_sn": "请输入燃气表号。",
+      "cannot_connect": "无法通过花源燃气核验此表号。"
+    },
+    "abort": {
+      "already_configured": "此燃气表已配置。"
+    }
+  }
+}

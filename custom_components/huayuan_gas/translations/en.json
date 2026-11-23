@@ -1,0 +1,18 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "data": {
+          "sn": "Gas meter number"
+        }
+      }
+    },
+    "error": {
+      "invalid_sn": "Enter a gas meter number.",
+      "cannot_connect": "Could not verify this meter with Huayuan Gas."
+    },
+    "abort": {
+      "already_configured": "This meter is already configured."
+    }
+  }
+}
