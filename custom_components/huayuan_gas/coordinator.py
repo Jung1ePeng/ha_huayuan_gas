@@ -1,6 +1,7 @@
 """Poll meter data and settle completed sampling intervals."""
 
 from asyncio import Lock
+from collections import Counter
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -258,7 +259,21 @@ class HuayuanGasCoordinator(DataUpdateCoordinator):
                 self.boundaries, self.usage = old_boundaries, old_usage
                 self.meter_balance = old_balance
                 raise
-        return self._snapshot(data, today)
+        snapshot = self._snapshot(data, today)
+        if old_payments is not None:
+            latest_time = old_payments[-1].time if old_payments else None
+            incoming = Counter(
+                payment for payment in payments
+                if latest_time is None or payment.time >= latest_time
+            )
+            incoming.subtract(old_payments)
+            amount = sum(
+                (payment.amount * count for payment, count in incoming.items() if count > 0),
+                ZERO,
+            )
+            if amount:
+                snapshot["recharge_pulse"] = (sampled_at, amount)
+        return snapshot
 
     def _snapshot(
         self, data: dict, today: date, *, meter_stale: bool = False, total_stale: bool = False

@@ -10,9 +10,10 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfVolume
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -44,6 +45,8 @@ SENSORS = (
     SensorEntityDescription(
         key="recharge",
         name="充值记录",
+        native_unit_of_measurement="CNY",
+        device_class=SensorDeviceClass.MONETARY,
     ),
     SensorEntityDescription(
         key="cost",
@@ -145,18 +148,48 @@ class GasSensor(CoordinatorEntity, SensorEntity):
 
 
 class RechargeSensor(GasSensor):
-    """Show the latest record in History and keep earlier records in attributes."""
+    """Record new payments as short, numeric spikes."""
 
     _unrecorded_attributes = frozenset({"records"})
+    _attr_native_value = Decimal(0)
+    _last_pulse = None
+    _cancel_reset = None
 
     @property
-    def native_value(self) -> str | None:
-        payments = (self.coordinator.data or {}).get("payments")
-        if not payments:
-            return None
-        latest = payments[-1]
-        time = latest.time.strftime("%Y-%m-%d %H:%M:%S")
-        return f"{time} · ¥{latest.amount:.2f}"
+    def native_value(self) -> Decimal:
+        return self._attr_native_value
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.async_on_remove(self._cancel_pulse_reset)
+        self._accept_pulse()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self._accept_pulse()
+        super()._handle_coordinator_update()
+
+    @callback
+    def _accept_pulse(self) -> None:
+        pulse = (self.coordinator.data or {}).get("recharge_pulse")
+        if pulse is None or pulse == self._last_pulse:
+            return
+        self._last_pulse = pulse
+        self._attr_native_value = pulse[1]
+        self._cancel_pulse_reset()
+        self._cancel_reset = async_call_later(self.hass, 60, self._reset_pulse)
+
+    @callback
+    def _cancel_pulse_reset(self) -> None:
+        if self._cancel_reset is not None:
+            self._cancel_reset()
+            self._cancel_reset = None
+
+    @callback
+    def _reset_pulse(self, _now) -> None:
+        self._cancel_reset = None
+        self._attr_native_value = Decimal(0)
+        self.async_write_ha_state()
 
     @property
     def extra_state_attributes(self) -> dict | None:
