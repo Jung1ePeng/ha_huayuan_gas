@@ -1,6 +1,5 @@
 """Expose the meter readings and settled costs as Home Assistant sensors."""
 
-from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
 from homeassistant.components.sensor import (
@@ -21,12 +20,9 @@ from .const import CONF_SN, DOMAIN
 from .coordinator import HuayuanGasCoordinator
 
 LEGACY_TOTAL_ID = "huayuan_gas_cumulative_cost"
-PAYMENT_FIELDS = {
-    "recharge": "amount",
-    "recharge_time": "time",
-    "recharge_channel": "channel",
-    "recharge_sequence": "sequence",
-}
+REMOVED_KEYS = (
+    "recharge_time", "recharge_channel", "recharge_sequence", "account_balance", "arrears"
+)
 
 
 SENSORS = (
@@ -46,34 +42,7 @@ SENSORS = (
     ),
     SensorEntityDescription(
         key="recharge",
-        name="最近一次充值金额",
-        native_unit_of_measurement="CNY",
-        device_class=SensorDeviceClass.MONETARY,
-    ),
-    SensorEntityDescription(
-        key="recharge_time",
-        name="最近一次充值时间",
-        device_class=SensorDeviceClass.TIMESTAMP,
-    ),
-    SensorEntityDescription(
-        key="recharge_channel",
-        name="最近一次充值渠道",
-    ),
-    SensorEntityDescription(
-        key="recharge_sequence",
-        name="最近一次充值序号",
-    ),
-    SensorEntityDescription(
-        key="account_balance",
-        name="账户余额",
-        native_unit_of_measurement="CNY",
-        device_class=SensorDeviceClass.MONETARY,
-    ),
-    SensorEntityDescription(
-        key="arrears",
-        name="欠费金额",
-        native_unit_of_measurement="CNY",
-        device_class=SensorDeviceClass.MONETARY,
+        name="充值记录",
     ),
     SensorEntityDescription(
         key="valve",
@@ -81,7 +50,7 @@ SENSORS = (
     ),
     SensorEntityDescription(
         key="cost",
-        name="燃气费用",
+        name="昨日燃气费用",
         icon="mdi:currency-cny",
         native_unit_of_measurement="CNY",
         device_class=SensorDeviceClass.MONETARY,
@@ -114,8 +83,16 @@ async def async_setup_entry(
         if legacy is not None and legacy.config_entry_id == entry.entry_id:
             registry.async_update_entity(legacy_id, new_unique_id=ids["total"])
 
+    for key in REMOVED_KEYS:
+        entity_id = registry.async_get_entity_id(
+            "sensor", DOMAIN, f"huayuan_gas_{key}_{entry.entry_id}"
+        )
+        if entity_id is not None:
+            registry.async_remove(entity_id)
+
+    classes = {"total": CumulativeCostSensor, "recharge": RechargeSensor}
     async_add_entities(
-        (CumulativeCostSensor if description.key == "total" else GasSensor)(
+        classes.get(description.key, GasSensor)(
             coordinator,
             description,
             ids.get(description.key)
@@ -142,33 +119,57 @@ class GasSensor(CoordinatorEntity, SensorEntity):
     def available(self) -> bool:
         data = self.coordinator.data or {}
         key = self.entity_description.key
-        required = "settlement" if key in ("cost", "total") else key
-        if key in PAYMENT_FIELDS:
-            required = "last_payment"
+        required = {"cost": "daily_cost", "total": "settlement", "recharge": "payments"}.get(
+            key, key
+        )
         return super().available and required in data
 
     @property
-    def native_value(self) -> Decimal | datetime | int | str | None:
+    def native_value(self) -> Decimal | str | None:
         data = self.coordinator.data or {}
         key = self.entity_description.key
-        if key in PAYMENT_FIELDS:
-            payment = data.get("last_payment")
-            return getattr(payment, PAYMENT_FIELDS[key]) if payment is not None else None
-        if key in ("cost", "total"):
+        if key == "cost":
+            daily = data.get("daily_cost")
+            return daily[1] if daily is not None else None
+        if key == "total":
             settlement = data.get("settlement")
-            return getattr(settlement, key) if settlement is not None else None
+            return settlement.total if settlement is not None else None
         return data.get(key)
 
     @property
-    def extra_state_attributes(self) -> dict[str, str] | None:
-        if self.entity_description.key not in ("cost", "total"):
+    def extra_state_attributes(self) -> dict | None:
+        data = self.coordinator.data or {}
+        key = self.entity_description.key
+        if key == "cost" and (daily := data.get("daily_cost")) is not None:
+            return {"billing_date": daily[0].isoformat()}
+        if key in ("usage", "total"):
+            return {"stale": data.get(f"{key}_stale", False)}
+        return None
+
+
+class RechargeSensor(GasSensor):
+    """Show the latest record in History and keep earlier records in attributes."""
+
+    _unrecorded_attributes = frozenset({"records"})
+
+    @property
+    def native_value(self) -> str | None:
+        payments = (self.coordinator.data or {}).get("payments")
+        if not payments:
             return None
-        settlement = (self.coordinator.data or {}).get("settlement")
-        if settlement is None or settlement.period_start is None:
+        latest = payments[-1]
+        time = latest.time.strftime("%Y-%m-%d %H:%M:%S")
+        sequence = latest.sequence if latest.sequence is not None else "—"
+        return f"{time} · ¥{latest.amount:.2f} · {latest.channel or '—'} · #{sequence}"
+
+    @property
+    def extra_state_attributes(self) -> dict | None:
+        payments = (self.coordinator.data or {}).get("payments")
+        if payments is None:
             return None
         return {
-            "period_start": settlement.period_start.isoformat(),
-            "period_end": settlement.sampled_at.isoformat(),
+            "latest": payments[-1].serialize() if payments else None,
+            "records": [payment.serialize() for payment in reversed(payments)],
         }
 
 

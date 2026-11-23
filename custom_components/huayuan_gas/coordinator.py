@@ -12,13 +12,14 @@ from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import GasApi, GasApiError, Payment, now
-from .const import DEFAULT_SCAN_INTERVAL, DOMAIN, RETRY_INTERVAL_MINUTES
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 ZERO = Decimal(0)
 HISTORY_START = date(2000, 1, 1)
-SCAN_INTERVAL = timedelta(hours=DEFAULT_SCAN_INTERVAL)
-RETRY_INTERVAL = timedelta(minutes=RETRY_INTERVAL_MINUTES)
+SCAN_INTERVAL = timedelta(hours=1)
+RETRY_INTERVAL = timedelta(minutes=5)
+MIDNIGHT_WINDOW = timedelta(minutes=15)
 
 
 @dataclass(frozen=True)
@@ -63,8 +64,10 @@ class HuayuanGasCoordinator(DataUpdateCoordinator):
         self.store = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}", atomic_writes=True)
         self.settlement: Settlement | None = None
         self._legacy_total: Decimal | None = None
-        self._last_payment: Payment | None = None
-        self._history_initialized = False
+        self.payments: tuple[Payment, ...] | None = None
+        self.usage: Decimal | None = None
+        self.boundaries: dict[date, Decimal] = {}
+        self.daily_cost: tuple[date, Decimal] | None = None
         self._settlement_lock = Lock()
 
     async def async_load_baseline(self) -> None:
@@ -73,30 +76,42 @@ class HuayuanGasCoordinator(DataUpdateCoordinator):
                 self.settlement = Settlement.restore(stored["settlement"])
             if stored["legacy_total"] is not None:
                 self._legacy_total = Decimal(stored["legacy_total"])
-            if stored.get("last_payment") is not None:
-                self._last_payment = Payment.restore(stored["last_payment"])
-            self._history_initialized = stored.get("history_initialized", False)
+            if stored.get("payments") is not None:
+                self.payments = tuple(Payment.restore(row) for row in stored["payments"])
+            if stored.get("usage") is not None:
+                self.usage = Decimal(stored["usage"])
+            self.boundaries = {
+                date.fromisoformat(day): Decimal(balance)
+                for day, balance in stored.get("boundaries", {}).items()
+            }
+            if (daily := stored.get("daily_cost")) is not None:
+                self.daily_cost = (date.fromisoformat(daily[0]), Decimal(daily[1]))
 
     async def _save(
         self,
         settlement: Settlement | None,
         legacy_total: Decimal | None,
-        last_payment: Payment | None,
-        *,
-        history_initialized: bool,
     ) -> None:
         await self.store.async_save(
             {
                 "settlement": settlement.serialize() if settlement is not None else None,
                 "legacy_total": str(legacy_total) if legacy_total is not None else None,
-                "last_payment": last_payment.serialize() if last_payment is not None else None,
-                "history_initialized": history_initialized,
+                "payments": (
+                    [payment.serialize() for payment in self.payments]
+                    if self.payments is not None else None
+                ),
+                "usage": str(self.usage) if self.usage is not None else None,
+                "boundaries": {
+                    day.isoformat(): str(balance) for day, balance in self.boundaries.items()
+                },
+                "daily_cost": (
+                    [self.daily_cost[0].isoformat(), str(self.daily_cost[1])]
+                    if self.daily_cost is not None else None
+                ),
             }
         )
         self.settlement = settlement
         self._legacy_total = legacy_total
-        self._last_payment = last_payment
-        self._history_initialized = history_initialized
 
     async def async_import_legacy_total(self, total: Decimal) -> None:
         """Carry the existing cumulative entity's total into its new storage once."""
@@ -110,10 +125,7 @@ class HuayuanGasCoordinator(DataUpdateCoordinator):
                     current.sampled_at, current.balance, current.total + total,
                     current.period_start, current.cost,
                 )
-            await self._save(
-                updated, total, self._last_payment,
-                history_initialized=self._history_initialized,
-            )
+            await self._save(updated, total)
             if self.data is not None and self.data.get("settlement") is not None:
                 self.async_set_updated_data({**self.data, "settlement": updated})
 
@@ -126,34 +138,64 @@ class HuayuanGasCoordinator(DataUpdateCoordinator):
             data = await self.api.balance()
         except GasApiError as err:
             self.update_interval = RETRY_INTERVAL
-            raise UpdateFailed(str(err)) from err
+            if self.usage is None and self.settlement is None:
+                raise UpdateFailed(str(err)) from err
+            _LOGGER.warning("Meter data unavailable: %s", err)
+            return self._snapshot({}, now().date(), usage_stale=True, total_stale=True)
 
         sampled_at = now()
+        today = sampled_at.date()
+        yesterday = today - timedelta(days=1)
+        midnight = sampled_at.replace(hour=0, minute=0, second=0, microsecond=0)
+        balance = data["meter_balance"]
+        old_usage = self.usage
+        old_boundaries = self.boundaries
+        old_payments = self.payments
+        old_daily = self.daily_cost
+        self.usage = data["usage"]
+        if today not in self.boundaries and sampled_at - midnight < MIDNIGHT_WINDOW:
+            self.boundaries = {
+                day: value for day, value in self.boundaries.items() if day >= yesterday
+            }
+            self.boundaries[today] = balance
         previous = self.settlement
         begin = (
-            previous.sampled_at.date()
-            if previous is not None and self._history_initialized
+            min(yesterday, previous.sampled_at.date())
+            if previous is not None and self.payments is not None
             else HISTORY_START
         )
         try:
-            payments = await self.api.payments(min(begin, sampled_at.date()), sampled_at.date())
+            payments = await self.api.payments(begin, today)
         except GasApiError as err:
             self.update_interval = RETRY_INTERVAL
             _LOGGER.warning("Payment data unavailable: %s", err)
-            if self._history_initialized:
-                data["last_payment"] = self._last_payment
-            return data
+            if self.usage != old_usage or self.boundaries != old_boundaries:
+                try:
+                    await self._save(previous, self._legacy_total)
+                except Exception:
+                    self.boundaries, self.usage = old_boundaries, old_usage
+                    raise
+            return self._snapshot(data, today, total_stale=True)
 
-        self.update_interval = SCAN_INTERVAL
-        latest = max(payments, key=lambda p: (p.time, p.sequence or 0), default=None)
-        if latest is None or (
-            self._last_payment is not None
-            and (latest.time, latest.sequence or 0)
-            < (self._last_payment.time, self._last_payment.sequence or 0)
-        ):
-            latest = self._last_payment
+        refreshed_at = now()
+        self.update_interval = (
+            refreshed_at.replace(minute=0, second=0, microsecond=0)
+            + SCAN_INTERVAL - refreshed_at
+        )
+        # Replace the range returned by the provider and keep earlier records.
+        self.payments = tuple(sorted(
+            [p for p in self.payments or () if p.time.date() < begin] + payments,
+            key=lambda p: (p.time, p.sequence or 0),
+        ))
+        if yesterday in self.boundaries and today in self.boundaries:
+            recharged_yesterday = sum(
+                (p.amount for p in payments if p.time.date() == yesterday), ZERO
+            )
+            self.daily_cost = (
+                yesterday,
+                self.boundaries[yesterday] + recharged_yesterday - self.boundaries[today],
+            )
 
-        balance = data["meter_balance"]
         settlement = previous
         if previous is None:
             settlement = Settlement(sampled_at, balance, self._legacy_total or ZERO)
@@ -171,10 +213,30 @@ class HuayuanGasCoordinator(DataUpdateCoordinator):
             )
 
         if (
-            settlement != previous or latest != self._last_payment
-            or not self._history_initialized
+            settlement != previous or self.payments != old_payments
+            or self.daily_cost != old_daily or self.boundaries != old_boundaries
+            or self.usage != old_usage
         ):
-            await self._save(settlement, self._legacy_total, latest, history_initialized=True)
-        data["last_payment"] = self._last_payment
-        data["settlement"] = self.settlement
+            try:
+                await self._save(settlement, self._legacy_total)
+            except Exception:
+                self.payments, self.daily_cost = old_payments, old_daily
+                self.boundaries, self.usage = old_boundaries, old_usage
+                raise
+        return self._snapshot(data, today)
+
+    def _snapshot(
+        self, data: dict, today: date, *, usage_stale: bool = False, total_stale: bool = False
+    ) -> dict:
+        data.update(
+            usage=self.usage,
+            usage_stale=usage_stale,
+            total_stale=total_stale,
+            settlement=self.settlement,
+            payments=self.payments,
+            daily_cost=(
+                self.daily_cost if self.daily_cost and
+                self.daily_cost[0] == today - timedelta(days=1) else None
+            ),
+        )
         return data
