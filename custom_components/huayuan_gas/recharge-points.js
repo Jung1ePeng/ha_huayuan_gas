@@ -35,7 +35,7 @@ class HuayuanRechargePoints extends HTMLElement {
           <option value="90">最近 90 天</option><option value="365">最近一年</option>
           <option value="all" selected>全部记录</option>
         </select></header>
-        <canvas tabindex="0" role="img" aria-label="充值散点图，使用左右方向键选择交易，完整交易也可展开明细查看"></canvas>
+        <canvas tabindex="0" role="img" aria-label="充值折线图，使用左右方向键选择交易，完整交易也可展开明细查看"></canvas>
         <output aria-live="polite"></output>
         <details><summary>交易明细</summary><table><thead><tr>
           <th>交易时间（北京时间）</th><th>金额</th>
@@ -168,6 +168,16 @@ class HuayuanRechargePoints extends HTMLElement {
       y: bottom - (bottom - top) * (amount - low) / (high - low),
     }));
     ctx.fillStyle = color("--primary-color", "#176c94");
+    if (this.positions.length > 1) {
+      ctx.strokeStyle = ctx.fillStyle;
+      ctx.lineWidth = 2;
+      ctx.lineJoin = "round";
+      ctx.beginPath();
+      const [first, ...rest] = this.positions;
+      ctx.moveTo(first.x, first.y);
+      for (const point of rest) ctx.lineTo(point.x, point.y);
+      ctx.stroke();
+    }
     for (const [index, {x, y}] of this.positions.entries()) {
       ctx.beginPath();
       ctx.arc(x, y, index === this.selected ? 7 : 4, 0, Math.PI * 2);
